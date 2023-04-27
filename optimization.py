@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch
 from torch import nn
+from tqdm import tqdm
 
 def l1norm_gragent(X, phi, b, u):
     m, d = phi.shape
