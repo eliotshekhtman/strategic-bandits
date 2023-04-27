@@ -88,79 +88,68 @@ def softmax(v, temp=1.):
     sm = nn.Softmax(dim=0)
     return sm(v / temp)
 
-def classify(x, phi, b, temp=0.02):
-    if len(x.shape) == 1:
-        return softmax( phi @ x + b , temp=temp)
-    else:
-        return softmax( phi @ x.T + b.tile([x.shape[0], 1]).T , temp=temp)
+def classify(x, phi, temp=0.02):
+    return softmax( phi @ x.T , temp=temp)
 
 def cost(x, x_hat):
     return torch.norm(x - x_hat) ** 2
 
-def agent_reward(u, phi, b, x, x_hat, temp):
-    return u @ classify(x_hat, phi, b, temp=temp) - cost(x, x_hat)
+def agent_reward(u, phi, x, x_hat, temp):
+    return u @ classify(x_hat, phi, temp=temp) - cost(x, x_hat)
 
-def gragent(X, phi, b, u, temp=0.02, attempts=5, iters=300):
+def gragent(X, phi, u, temp=0.02, attempts=5, iters=300):
     m, d = phi.shape
-    best_reward = agent_reward(u, phi, b, x=X, x_hat=X, temp=temp)
+    best_reward = agent_reward(u, phi, x=X, x_hat=X, temp=temp)
     best_X_hat = X.clone()
     for _ in range(attempts):
-        X_hat = torch.rand(d)
+        X_hat = torch.rand(d - 1)
         X_hat.requires_grad_(True)
         optimizer = torch.optim.SGD([X_hat], lr=0.01, momentum=0.9)
         for _ in range(iters):
+            X_hat_aug = torch.concat((X_hat, torch.ones(1)))
             optimizer.zero_grad()
-            loss = -agent_reward(u, phi, b, X, X_hat, temp)
+            loss = -agent_reward(u, phi, X, X_hat_aug, temp)
             loss.backward()
             optimizer.step()
         if loss < -best_reward:
             best_reward = -loss.detach()
-            best_X_hat = X_hat.detach()
+            best_X_hat = torch.concat((X_hat.detach(), torch.ones(1)))
     return best_X_hat
 
-def dm_reward(xWs, x_hats, phi, b, temp=0.02):
-    actions = classify(x=x_hats, phi=phi, b=b, temp=temp)
+
+def dm_reward(xWs, x_hats, phi, temp=0.02):
+    actions = classify(x=x_hats, phi=phi, temp=temp)
     return torch.mean(torch.diag(xWs @ actions))
 
 def phi_regularization(phi):
     return torch.norm(torch.norm(phi, dim=1) - 1)
 
-def gr_phi(Xhats, xWs, u, prev_phi=None, prev_b=None, 
+def gr_phi(Xhats, xWs, u, prev_phi=None, 
            temp=0.02, attempts=5, iters=300): # no additional penalty for finding x?
+    n, d = Xhats.shape
+    m = u.shape[0]
     if prev_phi is None:
         phi = torch.rand((m, d))
         phi.requires_grad_(True)
     else:
         phi = torch.clone(prev_phi)
         phi.requires_grad_(True)
-    if prev_b is None:
-        b = torch.zeros(m)
-        b.requires_grad_(True)
-    else:
-        b = torch.clone(prev_b)
-        b.requires_grad_(True)
     best_phi = phi.clone()
-    best_b = b.clone()
-    best_reward = dm_reward(xWs=xWs, x_hats=Xhats, phi=phi, b=b, temp=temp)
+    best_reward = dm_reward(xWs=xWs, x_hats=Xhats, phi=phi, temp=temp)
     for _ in range(attempts):
         optimizer = torch.optim.Adam([phi], lr=0.0001)
         for _ in tqdm(range(iters), position=0, leave=True):
             optimizer.zero_grad()
-            loss = - dm_reward(xWs=xWs, x_hats=Xhats, phi=phi, b=b, temp=temp) # + phi_regularization(phi)
+            loss = - dm_reward(xWs=xWs, x_hats=Xhats, phi=phi, temp=temp) # + phi_regularization(phi)
             loss.backward()
             optimizer.step()
             # print(loss)
         if loss < -best_reward:
             best_reward = -loss.detach()
             best_phi = phi.detach()
-            best_b = b.detach()
         phi = torch.rand((m, d))
         phi.requires_grad_(True)
-        b = torch.zeros(m)
-        b.requires_grad_(True)
-    return best_phi, best_b
-
-
+    return best_phi
 
 
 
