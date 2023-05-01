@@ -120,7 +120,10 @@ def gragent(X, phi, u, temp=0.02, attempts=5, iters=300):
 
 def dm_reward(xWs, x_hats, phi, temp=0.02):
     actions = classify(x=x_hats, phi=phi, temp=temp)
-    return torch.mean(torch.diag(xWs @ actions))
+    if len(x_hats.shape) > 1:
+        return torch.mean(torch.diag(xWs @ actions))
+    else:
+        return xWs @ actions
 
 def phi_regularization(phi):
     return torch.norm(torch.norm(phi, dim=1) - 1)
@@ -152,6 +155,23 @@ def gr_phi(Xhats, xWs, u, prev_phi=None,
         phi.requires_grad_(True)
     return best_phi
 
-
-
+def gr_xW(reward, x_hat, phi, temp=0.02, attempts=5, iters=1_000):
+    m, d = phi.shape
+    xW = torch.rand(m)
+    xW.requires_grad_(True)
+    best_xW = xW.clone()
+    best_loss = torch.norm(reward - dm_reward(xWs=xW, x_hats=x_hat, phi=phi, temp=temp))
+    for _ in range(attempts):
+        optimizer = torch.optim.Adam([xW], lr=0.0001)
+        for _ in range(iters):
+            optimizer.zero_grad()
+            loss = torch.norm(reward - dm_reward(xWs=xW, x_hats=x_hat, phi=phi, temp=temp))
+            loss.backward()
+            optimizer.step()
+        if loss < best_loss:
+            best_loss = loss.detach()
+            best_xW = xW.detach()
+        xW = torch.rand(m)
+        xW.requires_grad_(True)
+    return best_xW
 
