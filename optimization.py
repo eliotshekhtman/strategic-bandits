@@ -100,17 +100,46 @@ def agent_reward(u, phi, x, x_hat, temp):
 
 def gragent(X, phi, u, temp=0.02, attempts=5, iters=300):
     m, d = phi.shape
-    best_reward = agent_reward(u, phi, x=X, x_hat=X, temp=temp)
     best_X_hat = X.clone()
-    for _ in range(attempts):
+    # best_X_hat = torch.concat((torch.rand(d - 1), torch.ones(1)))
+    best_reward = agent_reward(u, phi, x=X, x_hat=best_X_hat, temp=temp)
+    X_hat = X[:-1].clone()
+    X_hat.requires_grad_(True)
+    optimizer = torch.optim.SGD([X_hat], lr=0.01, momentum=0.9)
+    for _ in range(iters):
+        X_hat_aug = torch.concat((X_hat, torch.ones(1)))
+        optimizer.zero_grad()
+        loss = -agent_reward(u, phi, X_hat_aug, X_hat_aug, temp)
+        loss.backward()
+        # print(loss)
+        optimizer.step()
+    for _ in range(iters):
+        X_hat_aug = torch.concat((X_hat, torch.ones(1)))
+        optimizer.zero_grad()
+        loss = -agent_reward(u, phi, X, X_hat_aug, temp)
+        loss.backward()
+        # print(loss)
+        optimizer.step()
+    if loss < -best_reward:
+        best_reward = -loss.detach()
+        best_X_hat = torch.concat((X_hat.detach(), torch.ones(1)))
+    for _ in range(attempts - 1):
         X_hat = torch.rand(d - 1)
         X_hat.requires_grad_(True)
         optimizer = torch.optim.SGD([X_hat], lr=0.01, momentum=0.9)
         for _ in range(iters):
             X_hat_aug = torch.concat((X_hat, torch.ones(1)))
             optimizer.zero_grad()
+            loss = -agent_reward(u, phi, X_hat_aug, X_hat_aug, temp)
+            loss.backward()
+            # print(loss)
+            optimizer.step()
+        for _ in range(iters):
+            X_hat_aug = torch.concat((X_hat, torch.ones(1)))
+            optimizer.zero_grad()
             loss = -agent_reward(u, phi, X, X_hat_aug, temp)
             loss.backward()
+            # print(loss)
             optimizer.step()
         if loss < -best_reward:
             best_reward = -loss.detach()
